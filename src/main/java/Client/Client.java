@@ -2,35 +2,44 @@ package Client;
 
 import java.io.*;
 import java.net.Socket;
+import java.nio.file.Files;
 import java.util.Scanner;
 
 public class Client {
-    // TODO: Declare variables for socket input/output streams
     private static String username;
-    public static void main(String[] args) throws Exception {
+    private static BufferedReader reader;
+    private static BufferedWriter writer;
+    private static InputStream inputStream;
+    private static OutputStream outputStream;
 
+    public static void main(String[] args) {
         try (Socket socket = new Socket("localhost", 12345)) {
-            //TODO: Use the socket input and output streams as needed
-
+            reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            writer = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
+            inputStream = socket.getInputStream();
+            outputStream = socket.getOutputStream();
 
             Scanner scanner = new Scanner(System.in);
 
             // --- LOGIN PHASE ---
             System.out.println("===== Welcome to CS Music Room =====");
-
-
             boolean loggedIn = false;
+
             while (!loggedIn) {
                 System.out.print("Username: ");
-                String username = scanner.nextLine();
+                username = scanner.nextLine();
                 System.out.print("Password: ");
                 String password = scanner.nextLine();
 
-
                 sendLoginRequest(username, password);
+                String response = reader.readLine();
 
-                // TODO: Receive and check the server's login response
-                // TODO: Set 'loggedIn = true' if credentials are correct; otherwise, prompt again
+                if ("SUCCESS".equals(response)) {
+                    System.out.println("Login successful!");
+                    loggedIn = true;
+                } else {
+                    System.out.println("Login failed. Try again.");
+                }
             }
 
             // --- ACTION MENU LOOP ---
@@ -64,39 +73,40 @@ public class Client {
         System.out.println("0. Exit");
     }
 
-    private static void sendLoginRequest(String username, String password) {
-        //TODO: send the login request
+    private static void sendLoginRequest(String username, String password) throws IOException {
+        writer.write("LOGIN " + username + " " + password + "\n");
+        writer.flush();
     }
+
     private static void enterChat(Scanner scanner) throws IOException {
-        System.out.print("You have entered the chat ");
+        System.out.println("You have entered the chat. Type /exit to leave.");
+        Thread receiver = new Thread(new ClientReceiver(reader));
+        receiver.start();
 
-
-        //TODO: Create and start ClientReceiver thread to continuously get new messages from server
-        String message_string = "";
-        while (!message_string.equalsIgnoreCase("/exit")){
-            message_string = scanner.nextLine();
-
-            if (!message_string.equalsIgnoreCase("/exit")){
-
-                sendChatMessage(message_string);
+        String message = "";
+        while (!message.equalsIgnoreCase("/exit")) {
+            message = scanner.nextLine();
+            if (!message.equalsIgnoreCase("/exit")) {
+                sendChatMessage(message);
             }
         }
+        receiver.interrupt();
     }
 
-    private static void sendChatMessage(String message_to_send) throws IOException {
-        //TODO: send the chat message
+    private static void sendChatMessage(String message) throws IOException {
+        writer.write("CHAT " + message + "\n");
+        writer.flush();
     }
 
     private static void uploadFile(Scanner scanner) throws IOException {
+        File folder = new File("resources/Client/" + username);
+        File[] files = folder.listFiles();
 
-        //TODO: list all files in the resources/Client/<username> folder
-        File[] files = null;
         if (files == null || files.length == 0) {
             System.out.println("No files to upload.");
             return;
         }
 
-        // Show available files
         System.out.println("Select a file to upload:");
         for (int i = 0; i < files.length; i++) {
             System.out.println((i + 1) + ". " + files[i].getName());
@@ -116,13 +126,63 @@ public class Client {
             return;
         }
 
-        // TODO: Notify the server that a file upload is starting (e.g., send file metadata)
-        // TODO: Read the file into a byte array and send it over the socket
+        File file = files[choice];
+        byte[] fileBytes = Files.readAllBytes(file.toPath());
+
+        writer.write("UPLOAD " + file.getName() + " " + fileBytes.length + "\n");
+        writer.flush();
+
+        outputStream.write(fileBytes);
+        outputStream.flush();
+
+        System.out.println("File uploaded successfully.");
     }
 
     private static void requestDownload(Scanner scanner) throws IOException {
-        // TODO: Send a request to the server to retrieve the list of available files
-        // TODO: Display the file names and prompt the user to select one
-        // TODO: Download the selected file and save it to the user's folder in 'resources/Client/<username>'
+        writer.write("LISTFILES\n");
+        writer.flush();
+
+        String fileList = reader.readLine();
+        String[] files = fileList.split(",");
+
+        System.out.println("Available files:");
+        for (int i = 0; i < files.length; i++) {
+            System.out.println((i + 1) + ". " + files[i]);
+        }
+
+        System.out.print("Enter file number to download: ");
+        int choice;
+        try {
+            choice = Integer.parseInt(scanner.nextLine()) - 1;
+        } catch (NumberFormatException e) {
+            System.out.println("Invalid input.");
+            return;
+        }
+
+        if (choice < 0 || choice >= files.length) {
+            System.out.println("Invalid choice.");
+            return;
+        }
+
+        String selectedFile = files[choice];
+        writer.write("DOWNLOAD " + selectedFile + "\n");
+        writer.flush();
+
+        String metadata = reader.readLine();
+        String[] parts = metadata.split(" ");
+        String filename = parts[0];
+        int length = Integer.parseInt(parts[1]);
+
+        byte[] fileBytes = new byte[length];
+        int bytesRead = 0;
+        while (bytesRead < length) {
+            int r = inputStream.read(fileBytes, bytesRead, length - bytesRead);
+            if (r == -1) break;
+            bytesRead += r;
+        }
+
+        File outFile = new File("resources/Client/" + username + "/" + filename);
+        Files.write(outFile.toPath(), fileBytes);
+        System.out.println("Downloaded file: " + filename);
     }
 }

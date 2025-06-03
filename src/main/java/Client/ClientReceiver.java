@@ -1,23 +1,24 @@
 package Client;
 
+import java.io.BufferedReader;
 
 public class ClientReceiver implements Runnable {
-    // TODO: Declare a variable to hold the input stream from the socket
-    public ClientReceiver() {
-        // TODO: Modify this constructor to receive either a Socket or an InputStream as a parameter
-        // TODO: Initialize the input stream variable using the received parameter
+    private BufferedReader reader;
+
+    public ClientReceiver(BufferedReader reader) {
+        this.reader = reader;
     }
 
     @Override
     public void run() {
         try {
-            while (true) {
-                //TODO: Listen for new messages from server
-                //TODO: print the  new message in CLI
+            while (!Thread.currentThread().isInterrupted()) {
+                String message = reader.readLine();
+                if (message == null) break;
+                System.out.println("[Server]: " + message);
             }
         } catch (Exception e) {
-
+            System.out.println("Disconnected from chat.");
         }
     }
-
 }
