@@ -33,10 +33,9 @@ public class Client {
 
                 sendLoginRequest(username, password);
                 String response = reader.readLine();
-
-                if ("SUCCESS".equals(response)) {
+                if ("LOGIN_SUCCESS".equals(response)) {
                     System.out.println("Login successful!");
-                    loggedIn = true;
+                    break;
                 } else {
                     System.out.println("Login failed. Try again.");
                 }
@@ -99,34 +98,9 @@ public class Client {
     }
 
     private static void uploadFile(Scanner scanner) throws IOException {
-        File folder = new File("resources/Client/" + username);
-        File[] files = folder.listFiles();
+        File file = selectFileForUpload(scanner);
+        if (file == null) return;
 
-        if (files == null || files.length == 0) {
-            System.out.println("No files to upload.");
-            return;
-        }
-
-        System.out.println("Select a file to upload:");
-        for (int i = 0; i < files.length; i++) {
-            System.out.println((i + 1) + ". " + files[i].getName());
-        }
-
-        System.out.print("Enter file number: ");
-        int choice;
-        try {
-            choice = Integer.parseInt(scanner.nextLine()) - 1;
-        } catch (NumberFormatException e) {
-            System.out.println("Invalid input.");
-            return;
-        }
-
-        if (choice < 0 || choice >= files.length) {
-            System.out.println("Invalid choice.");
-            return;
-        }
-
-        File file = files[choice];
         byte[] fileBytes = Files.readAllBytes(file.toPath());
 
         writer.write("UPLOAD " + file.getName() + " " + fileBytes.length + "\n");
@@ -135,8 +109,70 @@ public class Client {
         outputStream.write(fileBytes);
         outputStream.flush();
 
-        System.out.println("File uploaded successfully.");
+        System.out.println("✅ File '" + file.getName() + "' uploaded successfully.");
     }
+
+    private static File selectFileForUpload(Scanner scanner) {
+        System.out.println("\nUpload Options:");
+        System.out.println("1. Choose from your folder (resources/Client/" + username + ")");
+        System.out.println("2. Enter the full path to a file (e.g., drag and drop or paste)");
+        System.out.print("Choose option (1 or 2): ");
+        String option = scanner.nextLine();
+
+        // Ensure the folder exists or create it
+        File folder = new File("resources" + File.separator + "Client" + File.separator + username);
+        if (!folder.exists()) {
+            System.out.println("❌ Folder does not exist: " + folder.getAbsolutePath());
+            boolean created = folder.mkdirs();
+            if (created) {
+                System.out.println("✅ Folder created: " + folder.getAbsolutePath());
+            } else {
+                System.out.println("❌ Failed to create folder.");
+            }
+            return null; // Exit early or let the user retry
+        }
+
+        if (option.equals("1")) {
+            File[] files = folder.listFiles((dir, name) -> new File(dir, name).isFile());
+
+            if (files == null || files.length == 0) {
+                System.out.println("❌ No files found in your folder.");
+                return null;
+            }
+
+            System.out.println("Select a file to upload:");
+            for (int i = 0; i < files.length; i++) {
+                System.out.println((i + 1) + ". " + files[i].getName());
+            }
+
+            System.out.print("Enter file number: ");
+            int choice;
+            try {
+                choice = Integer.parseInt(scanner.nextLine()) - 1;
+                if (choice < 0 || choice >= files.length) throw new IndexOutOfBoundsException();
+                return files[choice];
+            } catch (Exception e) {
+                System.out.println("❌ Invalid selection.");
+                return null;
+            }
+
+        } else if (option.equals("2")) {
+            System.out.print("Enter full path to the file: ");
+            String path = scanner.nextLine().trim();
+            File file = new File(path);
+
+            if (!file.exists() || !file.isFile()) {
+                System.out.println("❌ File does not exist or is not valid.");
+                return null;
+            }
+
+            return file;
+        } else {
+            System.out.println("❌ Invalid option.");
+            return null;
+        }
+    }
+
 
     private static void requestDownload(Scanner scanner) throws IOException {
         writer.write("LISTFILES\n");
